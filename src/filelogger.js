@@ -40,7 +40,7 @@ angular.module('fileLogger', ['ngCordova.plugins.file'])
       queue.push({ message: JSON.stringify(event) + ',\n' });
 
       if (!ongoing) {
-        process();
+        return process();
       }
     }
 
@@ -137,7 +137,7 @@ angular.module('fileLogger', ['ngCordova.plugins.file'])
       queue.push({ message: message.join(' ') + '\n' });
 
       if (!ongoing) {
-        process();
+        return process();
       }
     }
 
@@ -152,15 +152,15 @@ angular.module('fileLogger', ['ngCordova.plugins.file'])
       ongoing = true;
       var m = queue.shift();
 
-      writeLog(m.message).then(
+      return writeLog(m.message).then(
         function() {
           $timeout(function() {
-            process();
+            return process();
           });
         },
         function() {
           $timeout(function() {
-            process();
+            return process();
           });
         }
       );
