@@ -32,6 +32,18 @@ angular.module('fileLogger', ['ngCordova.plugins.file'])
     }
 
 
+
+    function logEvent(event) {
+      if (!event) return;
+
+      event.timestamp = new Date().toISOString();
+      queue.push({ message: JSON.stringify(event) + ',\n' });
+
+      if (!ongoing) {
+        process();
+      }
+    }
+
     function log(level) {
       if (angular.isString(level)) {
         level = level.toUpperCase();
@@ -92,21 +104,21 @@ angular.module('fileLogger', ['ngCordova.plugins.file'])
               }
               break;
             case 'INFO':
-              if (angular.isFunction(console.debug)) {
+              if (angular.isFunction(console.info)) {
                 console.info.apply(console, messages);
               } else {
                 console.log.apply(console, messages);
               }
               break;
             case 'WARN':
-              if (angular.isFunction(console.debug)) {
+              if (angular.isFunction(console.warn)) {
                 console.warn.apply(console, messages);
               } else {
                 console.log.apply(console, messages);
               }
               break;
             case 'ERROR':
-              if (angular.isFunction(console.debug)) {
+              if (angular.isFunction(console.err)) {
                 console.error.apply(console, messages);
               } else {
                 console.log.apply(console, messages);
@@ -340,6 +352,7 @@ angular.module('fileLogger', ['ngCordova.plugins.file'])
 
 
     return {
+      logEvent: logEvent,
       log: log,
       getLogfile: getLogfile,
       deleteLogfile: deleteLogfile,
