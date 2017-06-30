@@ -5,7 +5,7 @@
   "version": "1.3.4",
   "repository": {
     "type": "git",
-    "url": "https://github.com/pbakondy/filelogger.git"
+    "url": "https://github.com/Eagleseb/filelogger.git"
   },
   "devDependencies": {
     "gulp": "^3.9.1",
@@ -23,7 +23,7 @@
     "ng-cordova": "^0.1.26-alpha"
   },
   "bugs": {
-    "url": "https://github.com/pbakondy/filelogger/issues"
+    "url": "https://github.com/Eagleseb/filelogger/issues"
   },
-  "homepage": "https://github.com/pbakondy/filelogger#readme"
+  "homepage": "https://github.com/Eagleseb/fileloggerr#readme"
 }
