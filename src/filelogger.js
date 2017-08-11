@@ -1,368 +1,287 @@
-/* global angular, console, cordova */
-/* eslint no-console:0 */
+/* global angular, cordova */
 
 // install    : cordova plugin add cordova-plugin-file
-// date format: https://docs.angularjs.org/api/ng/filter/date
 
 angular.module('fileLogger', ['ngCordova.plugins.file'])
 
-  .factory('$fileLogger', ['$q', '$window', '$cordovaFile', '$timeout', '$filter',
-    function ($q, $window, $cordovaFile, $timeout, $filter) {
+  .factory('$fileLogger', ['$q', '$window', '$cordovaFile', '$timeout',
+    function ($q, $window, $cordovaFile, $timeout) {
 
-    'use strict';
-
-
-    var queue = [];
-    var ongoing = false;
-    var levels = ['DEBUG', 'INFO', 'WARN', 'ERROR'];
-
-    var storageFilename = 'messages.log';
-
-    var dateFormat;
-    var dateTimezone;
-
-    // detecting Ripple Emulator
-    // https://gist.github.com/triceam/4658021
-    function isRipple() {
-      return $window.parent && $window.parent.ripple;
-    }
-
-    function isBrowser() {
-      return (!$window.cordova && !$window.PhoneGap && !$window.phonegap) || isRipple();
-    }
+      'use strict';
 
 
+      var queue = [];
+      var ongoing = false;
 
-    function logEvent(event) {
-      if (!event) return;
+      var logDir = 'logs/';
+      var storageFilename = 'messages.log';
+      // log rotate every 1 MB
+      var maxSizeBeforeLogrotate = 1024 * 1024 * 1;
 
-      event.timestamp = new Date().toISOString();
-      queue.push({ message: JSON.stringify(event) + ',\n' });
-
-      if (!ongoing) {
-        return process();
-      }
-    }
-
-    function log(level) {
-      if (angular.isString(level)) {
-        level = level.toUpperCase();
-
-        if (levels.indexOf(level) === -1) {
-          level = 'INFO';
-        }
-      } else {
-        level = 'INFO';
+      // detecting Ripple Emulator
+      // https://gist.github.com/triceam/4658021
+      function isRipple() {
+        return $window.parent && $window.parent.ripple;
       }
 
-      var now = new Date();
-      var timestamp = dateFormat ?
-        $filter('date')(now, dateFormat, dateTimezone) : now.toJSON();
+      function isBrowser() {
+        return (!$window.cordova && !$window.PhoneGap && !$window.phonegap) || isRipple();
+      }
 
-      var messages = Array.prototype.slice.call(arguments, 1);
-      var message = [ timestamp, level ];
-      var text;
+      function getUUID() {
+        return Date.now();
+      }
 
-      for (var i = 0; i < messages.length; i++ ) {
-        if (angular.isArray(messages[i])) {
-          text = '[Array]';
-          try {
-            // avoid "TypeError: Converting circular structure to JSON"
-            text = JSON.stringify(messages[i]);
-          } catch(e) {
-            // do nothing
-          }
-          message.push(text);
+
+      function logEvent(event) {
+        if (!event) {
+          return;
         }
-        else if (angular.isObject(messages[i])) {
-          text = '[Object]';
-          try {
-            // avoid "TypeError: Converting circular structure to JSON"
-            text = JSON.stringify(messages[i]);
-          } catch(e) {
-            // do nothing
-          }
-          message.push(text);
-        }
-        else {
-          message.push(messages[i]);
+
+        event.timestamp = new Date().toISOString();
+        queue.push({ message: JSON.stringify(event) + ',\n' });
+
+        if (!ongoing) {
+          return process();
         }
       }
 
-      if (isBrowser()) {
-        // log to browser console
+      function process() {
 
-        messages.unshift(timestamp);
-
-        if (angular.isObject(console) && angular.isFunction(console.log)) {
-          switch (level) {
-            case 'DEBUG':
-              if (angular.isFunction(console.debug)) {
-                console.debug.apply(console, messages);
-              } else {
-                console.log.apply(console, messages);
-              }
-              break;
-            case 'INFO':
-              if (angular.isFunction(console.info)) {
-                console.info.apply(console, messages);
-              } else {
-                console.log.apply(console, messages);
-              }
-              break;
-            case 'WARN':
-              if (angular.isFunction(console.warn)) {
-                console.warn.apply(console, messages);
-              } else {
-                console.log.apply(console, messages);
-              }
-              break;
-            case 'ERROR':
-              if (angular.isFunction(console.err)) {
-                console.error.apply(console, messages);
-              } else {
-                console.log.apply(console, messages);
-              }
-              break;
-            default:
-              console.log.apply(console, messages);
-          }
+        if (!queue.length) {
+          ongoing = false;
+          return;
         }
 
-      } else {
-        // log to logcat
-        console.log(message.join(' '));
-      }
+        ongoing = true;
+        var m = queue.shift();
 
-      queue.push({ message: message.join(' ') + '\n' });
-
-      if (!ongoing) {
-        return process();
-      }
-    }
-
-
-    function process() {
-
-      if (!queue.length) {
-        ongoing = false;
-        return;
-      }
-
-      ongoing = true;
-      var m = queue.shift();
-
-      return writeLog(m.message).then(
-        function() {
-          $timeout(function() {
-            return process();
-          });
-        },
-        function() {
-          $timeout(function() {
-            return process();
-          });
-        }
-      );
-
-    }
-
-
-    function writeLog(message) {
-      var q = $q.defer();
-
-      if (isBrowser()) {
-        // running in browser with 'ionic serve'
-
-        if (!$window.localStorage[storageFilename]) {
-          $window.localStorage[storageFilename] = '';
-        }
-
-        $window.localStorage[storageFilename] += message;
-        q.resolve();
-
-      } else {
-
-        if (!$window.cordova || !$window.cordova.file || !$window.cordova.file.dataDirectory) {
-          q.reject('cordova.file.dataDirectory is not available');
-          return q.promise;
-        }
-
-        $cordovaFile.checkFile(cordova.file.dataDirectory, storageFilename).then(
-          function() {
-            // writeExistingFile(path, fileName, text)
-            $cordovaFile.writeExistingFile(cordova.file.dataDirectory, storageFilename, message).then(
-              function() {
-                q.resolve();
-              },
-              function(error) {
-                q.reject(error);
-              }
-            );
+        return writeLog(m.message).then(
+          function () {
+            $timeout(function () {
+              return process();
+            });
           },
-          function() {
-            // writeFile(path, fileName, text, replaceBool)
-            $cordovaFile.writeFile(cordova.file.dataDirectory, storageFilename, message, true).then(
-              function() {
-                q.resolve();
-              },
-              function(error) {
-                q.reject(error);
-              }
-            );
+          function () {
+            $timeout(function () {
+              return process();
+            });
           }
         );
 
       }
 
-      return q.promise;
-    }
-
-
-    function getLogfile() {
-      var q = $q.defer();
-
-      if (isBrowser()) {
-        q.resolve($window.localStorage[storageFilename]);
-      } else {
-
-        if (!$window.cordova || !$window.cordova.file || !$window.cordova.file.dataDirectory) {
-          q.reject('cordova.file.dataDirectory is not available');
-          return q.promise;
-        }
-
-        $cordovaFile.readAsText(cordova.file.dataDirectory, storageFilename).then(
-          function(result) {
-            q.resolve(result);
-          },
-          function(error) {
-            q.reject(error);
-          }
-        );
-      }
-
-      return q.promise;
-    }
-
-
-    function deleteLogfile() {
-      var q = $q.defer();
-
-      if (isBrowser()) {
-        $window.localStorage.removeItem(storageFilename);
-        q.resolve();
-      } else {
-
-        if (!$window.cordova || !$window.cordova.file || !$window.cordova.file.dataDirectory) {
-          q.reject('cordova.file.dataDirectory is not available');
-          return q.promise;
-        }
-
-        $cordovaFile.removeFile(cordova.file.dataDirectory, storageFilename).then(
-          function(result) {
-            q.resolve(result);
-          },
-          function(error) {
-            q.reject(error);
-          }
-        );
-      }
-
-      return q.promise;
-    }
-
-
-    function setStorageFilename(filename) {
-      if (angular.isString(filename) && filename.length > 0) {
-        storageFilename = filename;
-        return true;
-      } else {
-        return false;
-      }
-    }
-
-
-    function setTimestampFormat(format, timezone) {
-      if (!(angular.isUndefined(format) || angular.isString(format))) {
-        throw new TypeError('format parameter must be a string or undefined');
-      }
-      if (!(angular.isUndefined(timezone) || angular.isString(timezone))) {
-        throw new TypeError('timezone parameter must be a string or undefined');
-      }
-
-      dateFormat = format;
-      dateTimezone = timezone;
-    }
-
-
-    function checkFile() {
-      var q = $q.defer();
-
-      if (isBrowser()) {
-
-        q.resolve({
-          'name': storageFilename,
-          'localURL': 'localStorage://localhost/' + storageFilename,
-          'type': 'text/plain',
-          'size': ($window.localStorage[storageFilename] ? $window.localStorage[storageFilename].length : 0)
+      function getFileSize(fileEntry) {
+        return $q(function (resolve, reject) {
+          fileEntry.getMetadata(
+            function (metadata) {
+              resolve(metadata.size); // get file size
+            }, reject);
         });
+      }
 
-      } else {
+      function writeLog(message) {
 
-        if (!$window.cordova || !$window.cordova.file || !$window.cordova.file.dataDirectory) {
-          q.reject('cordova.file.dataDirectory is not available');
-          return q.promise;
+        if (isBrowser()) {
+          // running in browser with 'ionic serve'
+
+          if (!$window.localStorage[storageFilename]) {
+            $window.localStorage[storageFilename] = '';
+          }
+
+          $window.localStorage[storageFilename] += message;
+          return $q.when();
+
+        } else {
+
+          if (!$window.cordova || !$window.cordova.file || !$window.cordova.file.dataDirectory) {
+            return $q.reject('cordova.file.dataDirectory is not available');
+          }
+
+          // First we check if logDir exists, if not we create it
+          var createDir = $cordovaFile.checkDir(cordova.file.dataDirectory, logDir).catch(function () {
+            return $cordovaFile.createDir(cordova.file.dataDirectory, logDir);
+          });
+
+          return createDir.then(function () {
+            // Then we check if logFile exists
+            $cordovaFile.checkFile(cordova.file.dataDirectory, logDir + storageFilename).then(
+              function (fileEntry) {
+                // If it exists and is already big, then we logrotate
+                // i.e. we archive it and write logs to a fresh file
+                return getFileSize(fileEntry).then(function (fileSize) {
+                  if (fileSize > maxSizeBeforeLogrotate) {
+                    return $cordovaFile.moveFile(cordova.file.dataDirectory, logDir + storageFilename,
+                      cordova.file.dataDirectory, logDir + getUUID() + '_' + storageFilename)
+                      .then(function () {
+                        // writeFile(path, fileName, text, replaceBool)
+                        return $cordovaFile.writeFile(cordova.file.dataDirectory, logDir + storageFilename, message, true);
+                      });
+                  } else {
+                    // else we append log to the previous logfile
+                    return $cordovaFile.writeExistingFile(cordova.file.dataDirectory, logDir + storageFilename, message);
+                  }
+                });
+              }).catch(function () {
+                // If it does not exist, we create a new file and log into it.
+                // writeFile(path, fileName, text, replaceBool)
+                return $cordovaFile.writeFile(cordova.file.dataDirectory, logDir + storageFilename, message, true);
+              });
+          });
+
         }
-
-        $cordovaFile.checkFile(cordova.file.dataDirectory, storageFilename).then(function(fileEntry) {
-          fileEntry.file(q.resolve, q.reject);
-        }, q.reject);
 
       }
 
-      return q.promise;
-    }
+      /**
+       * Retrive every logs inside logDir and return a cursor with their content.
+       * 
+       * cursor.next() return Promise({ path: string, content: string }) logs.
+       * 
+       * @returns {{ hasNext: Function(), next: Function() }} a cursor
+       */
+      function getLogfiles() {
+        if (isBrowser()) {
+          var current = 0;
 
-    function debug() {
-      var args = Array.prototype.slice.call(arguments, 0);
-      args.unshift('DEBUG');
-      log.apply(undefined, args);
-    }
+          var hasNext = function () {
+            return current === 0;
+          };
 
+          var next = function () {
+            if (hasNext()) {
+              current++;
+              return $q.resolve({
+                path: storageFilename,
+                content: $window.localStorage[storageFilename]
+              });
+            } else {
+              $q.reject('Empty cursor');
+            }
+          };
 
-    function info() {
-      var args = Array.prototype.slice.call(arguments, 0);
-      args.unshift('INFO');
-      log.apply(undefined, args);
-    }
+          return $q.when({
+            hasNext: hasNext,
+            next: next
+          });
+        } else {
+          if (!$window.cordova || !$window.cordova.file || !$window.cordova.file.dataDirectory) {
+            return $q.reject('cordova.file.dataDirectory is not available');
+          }
 
+          return $q(function (resolve, reject) {
+            $cordovaFile.checkDir(cordova.file.dataDirectory, logDir)
+              .then(function (dirEntry) {
+                var reader = dirEntry.createReader();
+                reader.readEntries(resolve, reject);
+              }, reject);
+          }).then(function (entries) {
+            var current = 0;
 
-    function warn() {
-      var args = Array.prototype.slice.call(arguments, 0);
-      args.unshift('WARN');
-      log.apply(undefined, args);
-    }
+            var hasNext = function () {
+              return current < entries.length;
+            };
 
+            var next = function () {
+              var entry = entries[current];
+              current++;
+              if (entry.isFile) {
+                return $cordovaFile.readAsText(cordova.file.dataDirectory, logDir + entry.name).then(function (content) {
+                  return {
+                    path: logDir + entry.name,
+                    content: content
+                  };
+                });
+              } else {
+                return $q.when();
+              }
+            };
 
-    function error() {
-      var args = Array.prototype.slice.call(arguments, 0);
-      args.unshift('ERROR');
-      log.apply(undefined, args);
-    }
+            return {
+              hasNext: hasNext,
+              next: next
+            };
+          });
+        }
+      }
 
+      function deleteLogfile(filePath) {
+        if (isBrowser()) {
+          $window.localStorage.removeItem(filePath);
+          return $q.when();
+        } else {
 
-    return {
-      logEvent: logEvent,
-      log: log,
-      getLogfile: getLogfile,
-      deleteLogfile: deleteLogfile,
-      setStorageFilename: setStorageFilename,
-      setTimestampFormat: setTimestampFormat,
-      checkFile: checkFile,
-      debug: debug,
-      info: info,
-      warn: warn,
-      error: error
-    };
+          if (!$window.cordova || !$window.cordova.file || !$window.cordova.file.dataDirectory) {
+            return $q.reject('cordova.file.dataDirectory is not available');
+          }
 
-  }]);
+          return $cordovaFile.removeFile(cordova.file.dataDirectory, filePath);
+        }
+      }
+
+      function setLogDir(dirname) {
+        if (angular.isString(dirname) && dirname.length > 0) {
+          logDir = dirname;
+          return true;
+        } else {
+          return false;
+        }
+      }
+
+      function setStorageFilename(filename) {
+        if (angular.isString(filename) && filename.length > 0) {
+          storageFilename = filename;
+          return true;
+        } else {
+          return false;
+        }
+      }
+
+      function setmaxSizeBeforeLogrotate(maxSize) {
+        if (angular.isNumber(maxSize) && maxSize > 0) {
+          maxSizeBeforeLogrotate = maxSize;
+          return true;
+        } else {
+          return false;
+        }
+      }
+
+      function checkFile() {
+        var q = $q.defer();
+
+        if (isBrowser()) {
+
+          q.resolve({
+            'name': storageFilename,
+            'localURL': 'localStorage://localhost/' + storageFilename,
+            'type': 'text/plain',
+            'size': ($window.localStorage[storageFilename] ? $window.localStorage[storageFilename].length : 0)
+          });
+
+        } else {
+
+          if (!$window.cordova || !$window.cordova.file || !$window.cordova.file.dataDirectory) {
+            q.reject('cordova.file.dataDirectory is not available');
+            return q.promise;
+          }
+
+          $cordovaFile.checkFile(cordova.file.dataDirectory, storageFilename).then(function (fileEntry) {
+            fileEntry.file(q.resolve, q.reject);
+          }, q.reject);
+
+        }
+
+        return q.promise;
+      }
+
+      return {
+        logEvent: logEvent,
+        getLogfiles: getLogfiles,
+        deleteLogfile: deleteLogfile,
+        setStorageFilename: setStorageFilename,
+        setLogDir: setLogDir,
+        setmaxSizeBeforeLogrotate: setmaxSizeBeforeLogrotate,
+        checkFile: checkFile,
+      };
+
+    }]);
