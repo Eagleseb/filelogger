@@ -153,7 +153,7 @@ angular.module('fileLogger', ['ngCordova.plugins.file'])
               current++;
               return $q.resolve({
                 path: storageFilename,
-                content: $window.localStorage[storageFilename]
+                content: $window.localStorage[storageFilename] || ''
               });
             } else {
               $q.reject('Empty cursor');

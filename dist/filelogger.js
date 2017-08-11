@@ -139,6 +139,13 @@ angular.module('fileLogger', ['ngCordova.plugins.file'])
 
       }
 
+      /**
+       * Retrive every logs inside logDir and return a cursor with their content.
+       * 
+       * cursor.next() return Promise({ path: string, content: string }) logs.
+       * 
+       * @returns {{ hasNext: Function(), next: Function() }} a cursor
+       */
       function getLogfiles() {
         if (isBrowser()) {
           var current = 0;
@@ -152,7 +159,7 @@ angular.module('fileLogger', ['ngCordova.plugins.file'])
               current++;
               return $q.resolve({
                 path: storageFilename,
-                content: $window.localStorage[storageFilename]
+                content: $window.localStorage[storageFilename] || ''
               });
             } else {
               $q.reject('Empty cursor');
